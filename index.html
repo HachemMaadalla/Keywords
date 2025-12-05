@@ -400,14 +400,14 @@ Example JSON:
                 progressBar.style.width = `${percentage}%`;
                 progressText.textContent = `${percentage}%`;
 
-                // DELAY LOGIC: Wait 10s if not the last item
+                // DELAY LOGIC: Wait 15s if not the last item
                 if (i < pendingItems.length - 1 && !shouldStop) {
                     updateCardStatus(card, 'success'); // Ensure current is marked done
-                    globalStatus.textContent = `Waiting 10s (Rate Limit)...`;
+                    globalStatus.textContent = `Waiting 15s (Rate Limit)...`;
                     globalStatus.classList.add('text-yellow-400');
                     globalStatus.classList.remove('text-blue-400');
                     
-                    await delay(10000); 
+                    await delay(15000); 
                     
                     globalStatus.classList.remove('text-yellow-400');
                     globalStatus.classList.add('text-blue-400');
