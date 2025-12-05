@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini to Adobe Stock Metadata</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .drag-active { border-color: #3b82f6 !important; background-color: rgba(59, 130, 246, 0.1); }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
+
+    <!-- Navbar -->
+    <nav class="bg-gray-800 border-b border-gray-700 p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-camera-retro text-blue-500 text-2xl"></i>
+                <h1 class="text-xl font-bold">Adobe Stock Metadata Generator <span class="text-xs font-normal text-gray-400 bg-gray-700 px-2 py-0.5 rounded ml-2">Gemini 2.0 Flash</span></h1>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <div class="relative w-full md:w-96">
+                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <i class="fa-solid fa-key text-gray-500"></i>
+                    </div>
+                    <input type="password" id="apiKey" placeholder="Paste Gemini API Key here" 
+                        class="block w-full p-2 pl-10 text-sm border border-gray-600 rounded-lg bg-gray-700 placeholder-gray-400 text-white focus:ring-blue-500 focus:border-blue-500 transition-all">
+                </div>
+                <button onclick="saveKey()" class="text-sm text-gray-400 hover:text-white" title="Key is stored locally in your browser">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto p-4 max-w-7xl">
+        
+        <!-- Controls & Drop Zone -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            
+            <!-- Left: Drop Zone -->
+            <div class="lg:col-span-2">
+                <div id="dropZone" class="border-2 border-dashed border-gray-600 rounded-xl h-48 flex flex-col justify-center items-center cursor-pointer transition-all hover:border-gray-500 bg-gray-800 group relative">
+                    <input type="file" id="fileInput" multiple accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-500 mb-3 group-hover:text-blue-400 transition-colors"></i>
+                    <p class="text-lg font-medium text-gray-300">Drag & Drop images here</p>
+                    <p class="text-sm text-gray-500">or click to browse (JPG, PNG, WEBP)</p>
+                </div>
+            </div>
+
+            <!-- Right: Actions -->
+            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold mb-4 text-gray-200">Actions</h2>
+                    <div class="flex justify-between text-sm text-gray-400 mb-4">
+                        <span>Total Images:</span>
+                        <span id="countBadge" class="font-mono text-white">0</span>
+                    </div>
+                    <div class="flex justify-between text-sm text-gray-400 mb-6">
+                        <span>Status:</span>
+                        <span id="globalStatus" class="text-blue-400">Ready</span>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col gap-3">
+                    <button id="startBtn" onclick="startProcessing()" disabled 
+                        class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-play"></i> Start Processing
+                    </button>
+                    
+                    <div class="flex gap-2">
+                        <button onclick="clearAll()" class="flex-1 bg-red-900/50 hover:bg-red-900 text-red-200 py-2 px-4 rounded-lg transition-colors border border-red-800">
+                            <i class="fa-solid fa-trash"></i> Clear
+                        </button>
+                        <button onclick="downloadCSV()" id="downloadBtn" disabled 
+                            class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg transition-colors">
+                            <i class="fa-solid fa-file-csv"></i> Download CSV
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="progressContainer" class="hidden mb-6">
+            <div class="flex justify-between mb-1">
+                <span class="text-sm font-medium text-blue-400">Progress</span>
+                <span class="text-sm font-medium text-blue-400" id="progressText">0%</span>
+            </div>
+            <div class="w-full bg-gray-700 rounded-full h-2.5">
+                <div id="progressBar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Image List / Grid -->
+        <div id="gallery" class="grid grid-cols-1 gap-4">
+            <!-- Items will be injected here via JS -->
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 border-t border-gray-800 p-4 text-center text-gray-500 text-sm mt-8">
+        <p>Generates Titles & Keywords optimized for Adobe Stock via Gemini AI.</p>
+    </footer>
+
+    <!-- Template for an Image Item -->
+    <template id="itemTemplate">
+        <div class="item-card bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col md:flex-row gap-4 transition-all hover:border-gray-600">
+            <!-- Thumbnail -->
+            <div class="w-full md:w-48 h-48 md:h-auto flex-shrink-0 bg-gray-900 rounded overflow-hidden flex items-center justify-center border border-gray-700 relative">
+                <img src="" alt="Preview" class="thumb-img max-w-full max-h-full object-contain">
+                <div class="status-overlay absolute inset-0 bg-black/60 flex flex-col items-center justify-center hidden">
+                    <span class="loader mb-2"></span>
+                    <span class="status-text text-xs text-white font-mono">Processing...</span>
+                </div>
+            </div>
+
+            <!-- Content Form -->
+            <div class="flex-grow flex flex-col gap-3">
+                <div class="flex justify-between items-start">
+                    <span class="filename text-xs text-gray-500 font-mono break-all">filename.jpg</span>
+                    <button onclick="removeItem(this)" class="text-gray-500 hover:text-red-400 transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+
+                <!-- Title Input -->
+                <div>
+                    <label class="block text-xs uppercase text-gray-400 font-bold mb-1">Title <span class="text-gray-600 font-normal ml-1 char-count">(0)</span></label>
+                    <input type="text" class="title-input w-full bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none" placeholder="Waiting for AI...">
+                </div>
+
+                <!-- Keywords Input -->
+                <div class="flex-grow">
+                    <label class="block text-xs uppercase text-gray-400 font-bold mb-1">Keywords <span class="text-gray-600 font-normal ml-1 kw-count">(0)</span></label>
+                    <textarea class="keyword-input w-full h-20 bg-gray-900 border border-gray-700 rounded p-2 text-sm text-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none" placeholder="Waiting for AI..."></textarea>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        // --- Configuration ---
+        const MODEL_NAME = "gemini-2.0-flash";
+        const PROMPT = `You are an expert Adobe Stock contributor. 
+Analyze the provided image and return **only** a valid JSON object with two fields:
+- "title": a concise, SEO-friendly title (max 70 characters).
+- "keywords": an array of 30–50 relevant English keywords/phrases, comma-separated when joined.
+
+Do NOT add any explanation, markdown, or extra text.
+Example JSON:
+{
+  "title": "Sunset over mountain lake",
+  "keywords": ["sunset", "mountain", "lake", "nature"]
+}`;
+
+        // --- State ---
+        let fileQueue = []; // Array of objects: { file, id, status, result: {title, keywords} }
+        let isProcessing = false;
+        let shouldStop = false;
+
+        // --- DOM Elements ---
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const gallery = document.getElementById('gallery');
+        const apiKeyInput = document.getElementById('apiKey');
+        const startBtn = document.getElementById('startBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const countBadge = document.getElementById('countBadge');
+        const globalStatus = document.getElementById('globalStatus');
+        const itemTemplate = document.getElementById('itemTemplate');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+
+        // --- Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) apiKeyInput.value = savedKey;
+        });
+
+        // --- Event Listeners ---
+        function saveKey() {
+            const key = apiKeyInput.value.trim();
+            if(key) {
+                localStorage.setItem('gemini_api_key', key);
+                alert("API Key saved to browser local storage.");
+            }
+        }
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        fileInput.addEventListener('change', handleFiles, false);
+
+        // --- File Handling ---
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles({ target: { files: files } });
+        }
+
+        function handleFiles(e) {
+            const files = [...e.target.files];
+            const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/tiff'];
+            
+            let addedCount = 0;
+
+            files.forEach(file => {
+                if (validTypes.includes(file.type)) {
+                    addFileToQueue(file);
+                    addedCount++;
+                }
+            });
+
+            if (addedCount > 0) updateUI();
+        }
+
+        function addFileToQueue(file) {
+            const id = 'img_' + Math.random().toString(36).substr(2, 9);
+            const item = {
+                id: id,
+                file: file,
+                status: 'pending', // pending, processing, waiting, success, error
+                title: '',
+                keywords: ''
+            };
+            fileQueue.push(item);
+            renderItem(item);
+        }
+
+        function renderItem(item) {
+            const clone = itemTemplate.content.cloneNode(true);
+            const card = clone.querySelector('.item-card');
+            card.id = item.id;
+            
+            // Setup thumbnail
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                card.querySelector('.thumb-img').src = e.target.result;
+            };
+            reader.readAsDataURL(item.file);
+
+            card.querySelector('.filename').textContent = item.file.name;
+            
+            // Add listeners for manual edits to update state
+            const titleInput = card.querySelector('.title-input');
+            const kwInput = card.querySelector('.keyword-input');
+
+            titleInput.addEventListener('input', (e) => {
+                item.title = e.target.value;
+                card.querySelector('.char-count').textContent = `(${e.target.value.length})`;
+            });
+            kwInput.addEventListener('input', (e) => {
+                item.keywords = e.target.value;
+                const count = e.target.value.split(',').filter(k => k.trim().length > 0).length;
+                card.querySelector('.kw-count').textContent = `(${count})`;
+            });
+
+            gallery.appendChild(card);
+        }
+
+        function removeItem(btn) {
+            if (isProcessing) return; // Prevent removal during processing to avoid index errors
+            const card = btn.closest('.item-card');
+            const id = card.id;
+            fileQueue = fileQueue.filter(i => i.id !== id);
+            card.remove();
+            updateUI();
+        }
+
+        function clearAll() {
+            if (isProcessing) {
+                shouldStop = true;
+                return;
+            }
+            fileQueue = [];
+            gallery.innerHTML = '';
+            updateUI();
+            resetProgress();
+        }
+
+        function updateUI() {
+            countBadge.textContent = fileQueue.length;
+            startBtn.disabled = fileQueue.length === 0 || isProcessing;
+            downloadBtn.disabled = fileQueue.length === 0 || fileQueue.every(i => i.status === 'pending');
+        }
+
+        // --- Logic: Processing ---
+
+        async function startProcessing() {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                alert("Please enter your Gemini API Key.");
+                return;
+            }
+
+            isProcessing = true;
+            shouldStop = false;
+            updateUI();
+            progressContainer.classList.remove('hidden');
+
+            const pendingItems = fileQueue.filter(i => i.status === 'pending' || i.status === 'error');
+            const total = pendingItems.length;
+            let processed = 0;
+
+            globalStatus.textContent = `Processing 1 of ${total}...`;
+
+            for (let i = 0; i < pendingItems.length; i++) {
+                if (shouldStop) break;
+
+                const item = pendingItems[i];
+                const card = document.getElementById(item.id);
+                
+                // Update Card UI to Processing
+                updateCardStatus(card, 'processing', 'Analysing...');
+                
+                try {
+                    // 1. Read file as Base64
+                    const base64Data = await readFileAsBase64(item.file);
+                    
+                    // 2. Call API
+                    const result = await callGemini(apiKey, base64Data, item.file.type);
+                    
+                    // 3. Parse JSON
+                    const parsed = JSON.parse(result);
+                    
+                    // 4. Update Data
+                    item.title = parsed.title || "Untitled";
+                    item.keywords = Array.isArray(parsed.keywords) ? parsed.keywords.join(", ") : (parsed.keywords || "");
+                    item.status = 'success';
+
+                    // 5. Update Card UI Inputs
+                    const tInput = card.querySelector('.title-input');
+                    const kInput = card.querySelector('.keyword-input');
+                    
+                    tInput.value = item.title;
+                    kInput.value = item.keywords;
+                    
+                    // Trigger input events to update counters
+                    tInput.dispatchEvent(new Event('input'));
+                    kInput.dispatchEvent(new Event('input'));
+
+                    updateCardStatus(card, 'success');
+
+                } catch (err) {
+                    console.error(err);
+                    item.status = 'error';
+                    updateCardStatus(card, 'error', 'Failed');
+                    // Simple error display in title
+                    card.querySelector('.title-input').value = "ERROR: " + err.message;
+                }
+
+                processed++;
+                const percentage = Math.round((processed / total) * 100);
+                progressBar.style.width = `${percentage}%`;
+                progressText.textContent = `${percentage}%`;
+
+                // DELAY LOGIC: Wait 10s if not the last item
+                if (i < pendingItems.length - 1 && !shouldStop) {
+                    updateCardStatus(card, 'success'); // Ensure current is marked done
+                    globalStatus.textContent = `Waiting 10s (Rate Limit)...`;
+                    globalStatus.classList.add('text-yellow-400');
+                    globalStatus.classList.remove('text-blue-400');
+                    
+                    await delay(10000); 
+                    
+                    globalStatus.classList.remove('text-yellow-400');
+                    globalStatus.classList.add('text-blue-400');
+                    globalStatus.textContent = `Processing ${i + 2} of ${total}...`;
+                }
+            }
+
+            isProcessing = false;
+            globalStatus.textContent = shouldStop ? "Stopped." : "All Done!";
+            updateUI();
+        }
+
+        // --- Helpers ---
+
+        function updateCardStatus(card, status, msg = '') {
+            const overlay = card.querySelector('.status-overlay');
+            const statusText = card.querySelector('.status-text');
+            const loader = card.querySelector('.loader');
+
+            if (status === 'processing') {
+                overlay.classList.remove('hidden');
+                loader.style.display = 'inline-block';
+                statusText.textContent = msg;
+                statusText.className = 'status-text text-xs text-white font-mono';
+            } else if (status === 'waiting') {
+                overlay.classList.remove('hidden');
+                loader.style.display = 'none';
+                statusText.textContent = msg;
+                statusText.className = 'status-text text-xs text-yellow-300 font-mono';
+            } else if (status === 'error') {
+                overlay.classList.remove('hidden');
+                loader.style.display = 'none';
+                statusText.textContent = msg;
+                statusText.className = 'status-text text-xs text-red-400 font-mono font-bold';
+            } else {
+                // Success / Default
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    // Remove "data:image/jpeg;base64," prefix
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function resetProgress() {
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            progressContainer.classList.add('hidden');
+            globalStatus.textContent = "Ready";
+        }
+
+        // --- API Integration ---
+
+        async function callGemini(key, base64Image, mimeType) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${key}`;
+            
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: PROMPT },
+                        {
+                            inline_data: {
+                                mime_type: mimeType,
+                                data: base64Image
+                            }
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    response_mime_type: "application/json"
+                }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || response.statusText);
+            }
+
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        // --- CSV Export ---
+
+        function downloadCSV() {
+            if (fileQueue.length === 0) return;
+
+            // Header for Adobe Stock
+            let csvContent = "Filename,Title,Keywords\n";
+
+            fileQueue.forEach(item => {
+                const filename = `"${item.file.name.replace(/"/g, '""')}"`;
+                const title = `"${item.title.replace(/"/g, '""')}"`;
+                // Escape quotes in keywords and wrap in quotes
+                const keywords = `"${item.keywords.replace(/"/g, '""')}"`;
+                
+                csvContent += `${filename},${title},${keywords}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "adobe_stock_metadata.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+</body>
+</html>
