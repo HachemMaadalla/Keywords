@@ -51,9 +51,12 @@
                     <input type="password" id="apiKey" placeholder="Paste Gemini API Key here" 
                         class="block w-full p-2 pl-10 text-sm border border-gray-600 rounded-lg bg-gray-700 placeholder-gray-400 text-white focus:ring-blue-500 focus:border-blue-500 transition-all">
                 </div>
-                <button onclick="saveKey()" class="text-sm text-gray-400 hover:text-white" title="Key is stored locally in your browser">
+                <button onclick="saveKey()" class="p-2 text-gray-400 hover:text-white transition-colors" title="Save Key to Local Storage">
                     <i class="fa-solid fa-floppy-disk"></i>
                 </button>
+                <a href="https://aistudio.google.com/app/api-keys" target="_blank" class="p-2 text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2" title="Get API Key">
+                    <i class="fa-solid fa-up-right-from-square"></i> <span class="hidden md:inline text-sm font-medium">Get Key</span>
+                </a>
             </div>
         </div>
     </nav>
