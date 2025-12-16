@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini to Adobe Stock Metadata</title>
+    <title>Adobe Stock Metadata Generator</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome for Icons -->
@@ -40,7 +40,20 @@
         <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-3">
                 <i class="fa-solid fa-camera-retro text-blue-500 text-2xl"></i>
-                <h1 class="text-xl font-bold">Adobe Stock Metadata Generator <span class="text-xs font-normal text-gray-400 bg-gray-700 px-2 py-0.5 rounded ml-2">Gemini 2.0 Flash</span></h1>
+                <h1 class="text-xl font-bold hidden sm:block">Stock Metadata</h1>
+                
+                <!-- Provider/Model Selector -->
+                <div class="relative ml-2">
+                    <select id="modelSelect" onchange="changeModel()" 
+                        class="appearance-none bg-gray-700 border border-gray-600 text-white py-1 pl-3 pr-8 rounded leading-tight focus:outline-none focus:bg-gray-600 focus:border-gray-500 text-sm font-medium w-64">
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                        <option value="meta-llama/llama-4-scout-17b-16e-instruct">Groq (Llama 4 Scout)</option>
+                        <option value="meta-llama/llama-4-maverick-17b-128e-instruct">Groq (Llama 4 Maverick)</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
             </div>
             
             <div class="flex items-center gap-2 w-full md:w-auto">
@@ -48,13 +61,13 @@
                     <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                         <i class="fa-solid fa-key text-gray-500"></i>
                     </div>
-                    <input type="password" id="apiKey" placeholder="Paste Gemini API Key here" 
+                    <input type="password" id="apiKey" placeholder="Paste API Key here" 
                         class="block w-full p-2 pl-10 text-sm border border-gray-600 rounded-lg bg-gray-700 placeholder-gray-400 text-white focus:ring-blue-500 focus:border-blue-500 transition-all">
                 </div>
                 <button onclick="saveKey()" class="p-2 text-gray-400 hover:text-white transition-colors" title="Save Key to Local Storage">
                     <i class="fa-solid fa-floppy-disk"></i>
                 </button>
-                <a href="https://aistudio.google.com/app/api-keys" target="_blank" class="p-2 text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2" title="Get API Key">
+                <a id="getKeyLink" href="https://aistudio.google.com/app/api-keys" target="_blank" class="p-2 text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-2" title="Get API Key">
                     <i class="fa-solid fa-up-right-from-square"></i> <span class="hidden md:inline text-sm font-medium">Get Key</span>
                 </a>
             </div>
@@ -130,7 +143,7 @@
 
     <!-- Footer -->
     <footer class="bg-gray-900 border-t border-gray-800 p-4 text-center text-gray-500 text-sm mt-8">
-        <p>Generates Titles & Keywords optimized for Adobe Stock via Gemini AI.</p>
+        <p>Generates Titles & Keywords optimized for Adobe Stock via Gemini AI or Groq.</p>
     </footer>
 
     <!-- Template for an Image Item -->
@@ -169,29 +182,27 @@
 
     <script>
         // --- Configuration ---
-        const MODEL_NAME = "gemini-2.5-flash";
-        const PROMPT = `You are an expert Adobe Stock contributor. 
+        const PROMPT_TEXT = `You are an expert Adobe Stock contributor. 
 Analyze the provided image and return **only** a valid JSON object with two fields:
 - "title": a concise, SEO-friendly title (max 70 characters).
 - "keywords": an array of 30–50 relevant English keywords/phrases, comma-separated when joined.
 
-Do NOT add any explanation, markdown, or extra text.
-Example JSON:
-{
-  "title": "Sunset over mountain lake",
-  "keywords": ["sunset", "mountain", "lake", "nature"]
-}`;
+Do NOT add any explanation, markdown, or extra text.`;
 
         // --- State ---
-        let fileQueue = []; // Array of objects: { file, id, status, result: {title, keywords} }
+        let fileQueue = []; 
         let isProcessing = false;
         let shouldStop = false;
+        let currentModel = 'gemini-2.0-flash';
+        let currentProvider = 'gemini'; // Derived from currentModel
 
         // --- DOM Elements ---
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const gallery = document.getElementById('gallery');
         const apiKeyInput = document.getElementById('apiKey');
+        const modelSelect = document.getElementById('modelSelect');
+        const getKeyLink = document.getElementById('getKeyLink');
         const startBtn = document.getElementById('startBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const countBadge = document.getElementById('countBadge');
@@ -203,27 +214,64 @@ Example JSON:
 
         // --- Initialization ---
         window.addEventListener('DOMContentLoaded', () => {
-            const savedKey = localStorage.getItem('gemini_api_key');
-            if (savedKey) apiKeyInput.value = savedKey;
+            // Restore last used model
+            const savedModel = localStorage.getItem('selected_model');
+            if (savedModel) {
+                // Validate if option exists
+                if ([...modelSelect.options].some(o => o.value === savedModel)) {
+                    currentModel = savedModel;
+                    modelSelect.value = currentModel;
+                }
+            }
+            changeModel(); // Initialize provider state based on model
         });
 
         // --- Event Listeners ---
-        function saveKey() {
-            const key = apiKeyInput.value.trim();
-            if(key) {
-                localStorage.setItem('gemini_api_key', key);
-                alert("API Key saved to browser local storage.");
+        function changeModel() {
+            currentModel = modelSelect.value;
+            localStorage.setItem('selected_model', currentModel);
+            
+            // Determine provider
+            if (currentModel.startsWith('gemini')) {
+                currentProvider = 'gemini';
+            } else {
+                currentProvider = 'groq';
+            }
+            
+            updateProviderUI();
+        }
+
+        function updateProviderUI() {
+            // Update Link and Placeholder
+            if (currentProvider === 'gemini') {
+                getKeyLink.href = "https://aistudio.google.com/app/api-keys";
+                apiKeyInput.placeholder = "Paste Gemini API Key here";
+                apiKeyInput.value = localStorage.getItem('gemini_api_key') || "";
+            } else {
+                getKeyLink.href = "https://console.groq.com/keys";
+                apiKeyInput.placeholder = "Paste Groq API Key here";
+                apiKeyInput.value = localStorage.getItem('groq_api_key') || "";
             }
         }
 
+        function saveKey() {
+            const key = apiKeyInput.value.trim();
+            if(key) {
+                if (currentProvider === 'gemini') {
+                    localStorage.setItem('gemini_api_key', key);
+                } else {
+                    localStorage.setItem('groq_api_key', key);
+                }
+                alert(`${currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1)} API Key saved to browser storage.`);
+            }
+        }
+
+        // Drag & Drop Handling
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             dropZone.addEventListener(eventName, preventDefaults, false);
         });
 
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
 
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
@@ -236,7 +284,6 @@ Example JSON:
         dropZone.addEventListener('drop', handleDrop, false);
         fileInput.addEventListener('change', handleFiles, false);
 
-        // --- File Handling ---
         function handleDrop(e) {
             const dt = e.dataTransfer;
             const files = dt.files;
@@ -248,14 +295,12 @@ Example JSON:
             const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/tiff'];
             
             let addedCount = 0;
-
             files.forEach(file => {
                 if (validTypes.includes(file.type)) {
                     addFileToQueue(file);
                     addedCount++;
                 }
             });
-
             if (addedCount > 0) updateUI();
         }
 
@@ -264,7 +309,7 @@ Example JSON:
             const item = {
                 id: id,
                 file: file,
-                status: 'pending', // pending, processing, waiting, success, error
+                status: 'pending', 
                 title: '',
                 keywords: ''
             };
@@ -277,7 +322,6 @@ Example JSON:
             const card = clone.querySelector('.item-card');
             card.id = item.id;
             
-            // Setup thumbnail
             const reader = new FileReader();
             reader.onload = (e) => {
                 card.querySelector('.thumb-img').src = e.target.result;
@@ -286,7 +330,6 @@ Example JSON:
 
             card.querySelector('.filename').textContent = item.file.name;
             
-            // Add listeners for manual edits to update state
             const titleInput = card.querySelector('.title-input');
             const kwInput = card.querySelector('.keyword-input');
 
@@ -304,7 +347,7 @@ Example JSON:
         }
 
         function removeItem(btn) {
-            if (isProcessing) return; // Prevent removal during processing to avoid index errors
+            if (isProcessing) return; 
             const card = btn.closest('.item-card');
             const id = card.id;
             fileQueue = fileQueue.filter(i => i.id !== id);
@@ -334,7 +377,7 @@ Example JSON:
         async function startProcessing() {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) {
-                alert("Please enter your Gemini API Key.");
+                alert(`Please enter your ${currentProvider === 'gemini' ? 'Gemini' : 'Groq'} API Key.`);
                 return;
             }
 
@@ -347,7 +390,7 @@ Example JSON:
             const total = pendingItems.length;
             let processed = 0;
 
-            globalStatus.textContent = `Processing 1 of ${total}...`;
+            globalStatus.textContent = `Processing 1 of ${total} using ${currentModel}...`;
 
             for (let i = 0; i < pendingItems.length; i++) {
                 if (shouldStop) break;
@@ -355,19 +398,30 @@ Example JSON:
                 const item = pendingItems[i];
                 const card = document.getElementById(item.id);
                 
-                // Update Card UI to Processing
                 updateCardStatus(card, 'processing', 'Analysing...');
                 
                 try {
-                    // 1. Prepare Image (Check size & Compress if needed)
-                    // We treat the result as a JPEG if compressed, or original mime if small enough
+                    // 1. Prepare Image
                     const { base64Data, mimeType } = await prepareImageForAPI(item.file);
                     
-                    // 2. Call API
-                    const result = await callGemini(apiKey, base64Data, mimeType);
+                    // 2. Call Selected API
+                    let result;
+                    if (currentProvider === 'gemini') {
+                        result = await callGemini(apiKey, base64Data, mimeType, currentModel);
+                    } else {
+                        result = await callGroq(apiKey, base64Data, mimeType, currentModel);
+                    }
                     
                     // 3. Parse JSON
-                    const parsed = JSON.parse(result);
+                    let parsed;
+                    try {
+                        // Extract JSON substring if markdown code blocks exist
+                        const jsonMatch = result.match(/\{[\s\S]*\}/);
+                        const jsonStr = jsonMatch ? jsonMatch[0] : result;
+                        parsed = JSON.parse(jsonStr);
+                    } catch (e) {
+                        throw new Error("Failed to parse AI response as JSON");
+                    }
                     
                     // 4. Update Data
                     item.title = parsed.title || "Untitled";
@@ -381,7 +435,6 @@ Example JSON:
                     tInput.value = item.title;
                     kInput.value = item.keywords;
                     
-                    // Trigger input events to update counters
                     tInput.dispatchEvent(new Event('input'));
                     kInput.dispatchEvent(new Event('input'));
 
@@ -391,7 +444,6 @@ Example JSON:
                     console.error(err);
                     item.status = 'error';
                     updateCardStatus(card, 'error', 'Failed');
-                    // Simple error display in title
                     card.querySelector('.title-input').value = "ERROR: " + err.message;
                 }
 
@@ -402,7 +454,7 @@ Example JSON:
 
                 // DELAY LOGIC: Wait 15s if not the last item
                 if (i < pendingItems.length - 1 && !shouldStop) {
-                    updateCardStatus(card, 'success'); // Ensure current is marked done
+                    updateCardStatus(card, 'success'); 
                     globalStatus.textContent = `Waiting 15s (Rate Limit)...`;
                     globalStatus.classList.add('text-yellow-400');
                     globalStatus.classList.remove('text-blue-400');
@@ -423,16 +475,15 @@ Example JSON:
         // --- Helpers ---
 
         async function prepareImageForAPI(file) {
-            const MAX_SIZE_BYTES = 19 * 1024 * 1024; // ~19MB safety limit
+            // Groq/Gemini limit check + resize
+            const MAX_SIZE_BYTES = 19 * 1024 * 1024; 
             
-            // If file is small enough, read normally
             if (file.size < MAX_SIZE_BYTES) {
                 const base64 = await readFileAsBase64(file);
                 return { base64Data: base64, mimeType: file.type };
             }
 
-            // If file is too big, compress it
-            console.log(`File ${file.name} is too large (${(file.size/1024/1024).toFixed(2)}MB). Compressing...`);
+            console.log(`File ${file.name} is too large. Compressing...`);
             return await compressImage(file);
         }
 
@@ -447,7 +498,6 @@ Example JSON:
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
                         
-                        // Scale logic: Keep aspect ratio, max 2048px on longest side
                         const MAX_DIM = 2048;
                         let width = img.width;
                         let height = img.height;
@@ -468,10 +518,7 @@ Example JSON:
                         canvas.height = height;
                         ctx.drawImage(img, 0, 0, width, height);
                         
-                        // Compress to JPEG with 0.8 quality
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                        
-                        // Remove prefix for API
                         const base64Data = dataUrl.split(',')[1];
                         resolve({ base64Data, mimeType: 'image/jpeg' });
                     };
@@ -502,7 +549,6 @@ Example JSON:
                 statusText.textContent = msg;
                 statusText.className = 'status-text text-xs text-red-400 font-mono font-bold';
             } else {
-                // Success / Default
                 overlay.classList.add('hidden');
             }
         }
@@ -515,7 +561,6 @@ Example JSON:
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
-                    // Remove "data:image/jpeg;base64," prefix
                     const base64String = reader.result.split(',')[1];
                     resolve(base64String);
                 };
@@ -531,15 +576,15 @@ Example JSON:
             globalStatus.textContent = "Ready";
         }
 
-        // --- API Integration ---
+        // --- API Integration: Gemini ---
 
-        async function callGemini(key, base64Image, mimeType) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${key}`;
+        async function callGemini(key, base64Image, mimeType, model) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
             
             const payload = {
                 contents: [{
                     parts: [
-                        { text: PROMPT },
+                        { text: PROMPT_TEXT },
                         {
                             inline_data: {
                                 mime_type: mimeType,
@@ -568,18 +613,61 @@ Example JSON:
             return data.candidates[0].content.parts[0].text;
         }
 
+        // --- API Integration: Groq ---
+
+        async function callGroq(key, base64Image, mimeType, model) {
+            const url = "https://api.groq.com/openai/v1/chat/completions";
+            
+            // Groq requires base64 url format
+            const dataUrl = `data:${mimeType};base64,${base64Image}`;
+
+            const payload = {
+                model: model,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: PROMPT_TEXT },
+                            { 
+                                type: "image_url", 
+                                image_url: { 
+                                    url: dataUrl 
+                                } 
+                            }
+                        ]
+                    }
+                ],
+                response_format: { type: "json_object" }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${key}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || response.statusText);
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+
         // --- CSV Export ---
 
         function downloadCSV() {
             if (fileQueue.length === 0) return;
 
-            // Header for Adobe Stock
             let csvContent = "Filename,Title,Keywords\n";
 
             fileQueue.forEach(item => {
                 const filename = `"${item.file.name.replace(/"/g, '""')}"`;
                 const title = `"${item.title.replace(/"/g, '""')}"`;
-                // Escape quotes in keywords and wrap in quotes
                 const keywords = `"${item.keywords.replace(/"/g, '""')}"`;
                 
                 csvContent += `${filename},${title},${keywords}\n`;
@@ -599,4 +687,3 @@ Example JSON:
     </script>
 </body>
 </html>
-
