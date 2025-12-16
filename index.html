@@ -476,14 +476,15 @@ Do NOT add any explanation, markdown, or extra text.`;
 
         async function prepareImageForAPI(file) {
             // Groq/Gemini limit check + resize
-            const MAX_SIZE_BYTES = 19 * 1024 * 1024; 
+            // Lowered trigger threshold to 10MB to be safe
+            const MAX_SIZE_BYTES = 10 * 1024 * 1024; 
             
             if (file.size < MAX_SIZE_BYTES) {
                 const base64 = await readFileAsBase64(file);
                 return { base64Data: base64, mimeType: file.type };
             }
 
-            console.log(`File ${file.name} is too large. Compressing...`);
+            console.log(`File ${file.name} is large (${(file.size/1024/1024).toFixed(2)}MB). Compressing...`);
             return await compressImage(file);
         }
 
@@ -498,7 +499,8 @@ Do NOT add any explanation, markdown, or extra text.`;
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
                         
-                        const MAX_DIM = 2048;
+                        // Aggressive resizing: Max 1024px is enough for AI to "see" the concept
+                        const MAX_DIM = 1024;
                         let width = img.width;
                         let height = img.height;
 
@@ -518,7 +520,8 @@ Do NOT add any explanation, markdown, or extra text.`;
                         canvas.height = height;
                         ctx.drawImage(img, 0, 0, width, height);
                         
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        // Aggressive compression: 0.6 quality
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
                         const base64Data = dataUrl.split(',')[1];
                         resolve({ base64Data, mimeType: 'image/jpeg' });
                     };
