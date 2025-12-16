@@ -184,8 +184,8 @@
         // --- Configuration ---
         const PROMPT_TEXT = `You are an expert Adobe Stock contributor. 
 Analyze the provided image and return **only** a valid JSON object with two fields:
-- "title": a concise, SEO-friendly title (max 70 characters).
-- "keywords": an array of 30–50 relevant English keywords/phrases, comma-separated when joined.
+- "title": a concise, SEO-friendly title (max 100 characters).
+- "keywords": an array of 40–50 relevant English keywords/phrases, comma-separated when joined.
 
 Do NOT add any explanation, markdown, or extra text.`;
 
@@ -193,7 +193,7 @@ Do NOT add any explanation, markdown, or extra text.`;
         let fileQueue = []; 
         let isProcessing = false;
         let shouldStop = false;
-        let currentModel = 'gemini-2.0-flash';
+        let currentModel = 'gemini-2.5-flash';
         let currentProvider = 'gemini'; // Derived from currentModel
 
         // --- DOM Elements ---
@@ -690,3 +690,4 @@ Do NOT add any explanation, markdown, or extra text.`;
     </script>
 </body>
 </html>
+
