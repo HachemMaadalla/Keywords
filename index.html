@@ -520,8 +520,8 @@ Do NOT add any explanation, markdown, or extra text.`;
                         canvas.height = height;
                         ctx.drawImage(img, 0, 0, width, height);
                         
-                        // Very aggressive compression: 0.4 quality (Converts PNG to JPEG to ensure size reduction)
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+                        // Very aggressive compression: 0.3 quality (Converts PNG to JPEG to ensure size reduction)
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.3);
                         const base64Data = dataUrl.split(',')[1];
                         resolve({ base64Data, mimeType: 'image/jpeg' });
                     };
@@ -690,4 +690,5 @@ Do NOT add any explanation, markdown, or extra text.`;
     </script>
 </body>
 </html>
+
 
