@@ -475,18 +475,22 @@ Do NOT add any explanation, markdown, or extra text.`;
         // --- Helpers ---
 
         async function prepareImageForAPI(file) {
-            // Groq/Gemini limit check + resize
-            // Lowered trigger threshold to 10MB to be safe
-            const MAX_SIZE_BYTES = 10 * 1024 * 1024; 
-            
-            if (file.size < MAX_SIZE_BYTES) {
-                const base64 = await readFileAsBase64(file);
-                return { base64Data: base64, mimeType: file.type };
-            }
+    // Groq's limit is 4MB total payload. 
+    // We set the threshold to 2.5MB to leave room for Base64 encoding and JSON overhead.
+    const GROQ_THRESHOLD = 2.5 * 1024 * 1024; 
+    const GEMINI_THRESHOLD = 15 * 1024 * 1024; // Gemini is more generous (20MB)
 
-            console.log(`File ${file.name} is large (${(file.size/1024/1024).toFixed(2)}MB). Compressing...`);
-            return await compressImage(file);
-        }
+    const currentThreshold = (currentProvider === 'groq') ? GROQ_THRESHOLD : GEMINI_THRESHOLD;
+
+    // Only send raw if it's safely under the provider's limit
+    if (file.size < currentThreshold) {
+        const base64 = await readFileAsBase64(file);
+        return { base64Data: base64, mimeType: file.type };
+    }
+
+    console.log(`File ${file.name} exceeds safe limit for ${currentProvider}. Compressing...`);
+    return await compressImage(file);
+}
 
         function compressImage(file) {
             return new Promise((resolve, reject) => {
@@ -690,6 +694,7 @@ Do NOT add any explanation, markdown, or extra text.`;
     </script>
 </body>
 </html>
+
 
 
 
