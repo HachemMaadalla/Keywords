@@ -49,6 +49,8 @@
                         <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                         <option value="meta-llama/llama-4-scout-17b-16e-instruct">Groq (Llama 4 Scout)</option>
                         <option value="meta-llama/llama-4-maverick-17b-128e-instruct">Groq (Llama 4 Maverick)</option>
+                        <option value="pixtral-12b-2409">Mistral (Pixtral 12B)</option>
+                        <option value="pixtral-large-latest">Mistral (Pixtral Large)</option>
                     </select>
                     <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
                         <i class="fa-solid fa-chevron-down text-xs"></i>
@@ -143,7 +145,7 @@
 
     <!-- Footer -->
     <footer class="bg-gray-900 border-t border-gray-800 p-4 text-center text-gray-500 text-sm mt-8">
-        <p>Generates Titles & Keywords optimized for Adobe Stock via Gemini AI or Groq.</p>
+        <p>Generates Titles & Keywords optimized for Adobe Stock via Gemini AI, Groq, or Mistral.</p>
     </footer>
 
     <!-- Template for an Image Item -->
@@ -234,6 +236,8 @@ Do NOT add any explanation, markdown, or extra text.`;
             // Determine provider
             if (currentModel.startsWith('gemini')) {
                 currentProvider = 'gemini';
+            } else if (currentModel.startsWith('pixtral')) {
+                currentProvider = 'mistral';
             } else {
                 currentProvider = 'groq';
             }
@@ -247,6 +251,10 @@ Do NOT add any explanation, markdown, or extra text.`;
                 getKeyLink.href = "https://aistudio.google.com/app/api-keys";
                 apiKeyInput.placeholder = "Paste Gemini API Key here";
                 apiKeyInput.value = localStorage.getItem('gemini_api_key') || "";
+            } else if (currentProvider === 'mistral') {
+                getKeyLink.href = "https://console.mistral.ai/api-keys/";
+                apiKeyInput.placeholder = "Paste Mistral API Key here";
+                apiKeyInput.value = localStorage.getItem('mistral_api_key') || "";
             } else {
                 getKeyLink.href = "https://console.groq.com/keys";
                 apiKeyInput.placeholder = "Paste Groq API Key here";
@@ -259,6 +267,8 @@ Do NOT add any explanation, markdown, or extra text.`;
             if(key) {
                 if (currentProvider === 'gemini') {
                     localStorage.setItem('gemini_api_key', key);
+                } else if (currentProvider === 'mistral') {
+                    localStorage.setItem('mistral_api_key', key);
                 } else {
                     localStorage.setItem('groq_api_key', key);
                 }
@@ -377,7 +387,7 @@ Do NOT add any explanation, markdown, or extra text.`;
         async function startProcessing() {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) {
-                alert(`Please enter your ${currentProvider === 'gemini' ? 'Gemini' : 'Groq'} API Key.`);
+                alert(`Please enter your ${currentProvider.charAt(0).toUpperCase() + currentProvider.slice(1)} API Key.`);
                 return;
             }
 
@@ -408,6 +418,8 @@ Do NOT add any explanation, markdown, or extra text.`;
                     let result;
                     if (currentProvider === 'gemini') {
                         result = await callGemini(apiKey, base64Data, mimeType, currentModel);
+                    } else if (currentProvider === 'mistral') {
+                        result = await callMistral(apiKey, base64Data, mimeType, currentModel);
                     } else {
                         result = await callGroq(apiKey, base64Data, mimeType, currentModel);
                     }
@@ -475,22 +487,25 @@ Do NOT add any explanation, markdown, or extra text.`;
         // --- Helpers ---
 
         async function prepareImageForAPI(file) {
-    // Groq's limit is 4MB total payload. 
-    // We set the threshold to 2.5MB to leave room for Base64 encoding and JSON overhead.
-    const GROQ_THRESHOLD = 2.5 * 1024 * 1024; 
-    const GEMINI_THRESHOLD = 15 * 1024 * 1024; // Gemini is more generous (20MB)
+            // Threshold logic for different providers
+            const GROQ_THRESHOLD = 2.5 * 1024 * 1024; 
+            const MISTRAL_THRESHOLD = 5 * 1024 * 1024; // Generous 5MB limit
+            const GEMINI_THRESHOLD = 15 * 1024 * 1024; // Gemini is more generous (20MB)
 
-    const currentThreshold = (currentProvider === 'groq') ? GROQ_THRESHOLD : GEMINI_THRESHOLD;
+            let currentThreshold;
+            if (currentProvider === 'groq') currentThreshold = GROQ_THRESHOLD;
+            else if (currentProvider === 'mistral') currentThreshold = MISTRAL_THRESHOLD;
+            else currentThreshold = GEMINI_THRESHOLD;
 
-    // Only send raw if it's safely under the provider's limit
-    if (file.size < currentThreshold) {
-        const base64 = await readFileAsBase64(file);
-        return { base64Data: base64, mimeType: file.type };
-    }
+            // Only send raw if it's safely under the provider's limit
+            if (file.size < currentThreshold) {
+                const base64 = await readFileAsBase64(file);
+                return { base64Data: base64, mimeType: file.type };
+            }
 
-    console.log(`File ${file.name} exceeds safe limit for ${currentProvider}. Compressing...`);
-    return await compressImage(file);
-}
+            console.log(`File ${file.name} exceeds safe limit for ${currentProvider}. Compressing...`);
+            return await compressImage(file);
+        }
 
         function compressImage(file) {
             return new Promise((resolve, reject) => {
@@ -624,8 +639,6 @@ Do NOT add any explanation, markdown, or extra text.`;
 
         async function callGroq(key, base64Image, mimeType, model) {
             const url = "https://api.groq.com/openai/v1/chat/completions";
-            
-            // Groq requires base64 url format
             const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
             const payload = {
@@ -637,9 +650,7 @@ Do NOT add any explanation, markdown, or extra text.`;
                             { type: "text", text: PROMPT_TEXT },
                             { 
                                 type: "image_url", 
-                                image_url: { 
-                                    url: dataUrl 
-                                } 
+                                image_url: { url: dataUrl } 
                             }
                         ]
                     }
@@ -659,6 +670,47 @@ Do NOT add any explanation, markdown, or extra text.`;
             if (!response.ok) {
                 const errData = await response.json();
                 throw new Error(errData.error?.message || response.statusText);
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        }
+
+        // --- API Integration: Mistral ---
+
+        async function callMistral(key, base64Image, mimeType, model) {
+            const url = "https://api.mistral.ai/v1/chat/completions";
+            const dataUrl = `data:${mimeType};base64,${base64Image}`;
+
+            const payload = {
+                model: model,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: PROMPT_TEXT },
+                            { 
+                                type: "image_url", 
+                                image_url: { url: dataUrl } 
+                            }
+                        ]
+                    }
+                ],
+                response_format: { type: "json_object" }
+            };
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${key}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.message || response.statusText);
             }
 
             const data = await response.json();
@@ -694,8 +746,3 @@ Do NOT add any explanation, markdown, or extra text.`;
     </script>
 </body>
 </html>
-
-
-
-
-
